@@ -44,9 +44,9 @@ This component is thinly documented on the docs site compared to the rest of the
 | 3 | `docs.roboto.ai` | Devices, datasets, collections, and credentials | Authoritative for the concepts the agent config refers to, not for the agent itself |
 | 4 | `references/agent-api.md` | Read it | Lowest authority: a map, not a citation |
 
-Never write a config field from memory. Both files are validated on load, and an unrecognized or misspelled field fails at run time with a parse error rather than being ignored — which is better than the alternative, but only if you read the error rather than reaching for a different field name.
+Never write a config field from memory. **Neither model rejects unknown keys.** A misspelled or misplaced field is silently dropped and the run proceeds on the default, so a typo presents as "the setting had no effect" with nothing in the log to say so. The only outright parse failures are a structurally invalid file or a missing `search_paths`. Write the field, then read the parsed config back and confirm the value you meant is in it.
 
-**The invocation form is itself a Phase 0 finding.** The module is runnable with `python -m roboto.upload_agent`, and its own log messages refer to a `roboto-agent` command. Whether that command exists on this machine depends on how the SDK was installed, and the public package's entry points do not guarantee it. Establish which form works before writing any documentation or service unit that depends on one.
+**The module runs as `python -m roboto.upload_agent`, and only that.** The public package declares a single console script, `roboto` — there is no `roboto-agent` binary. The module nevertheless calls itself `roboto-agent` in its help banner and in its error messages ("Please run `roboto-agent configure`"), which are not runnable as printed. Use the module form in the service unit and the runbook, and warn the user that the log text names a command they do not have. One of its error messages also names a `--default-upload-config` flag that does not exist; the real one is `--default-roboto-upload-file`.
 
 ## Phase 0 — Preflight
 
@@ -54,8 +54,8 @@ Run these on the uploading machine:
 
 ```bash
 python -c "import roboto; print('sdk ok')"           # SDK importable
-python -m roboto.upload_agent --help                 # the agent is runnable this way
-command -v roboto-agent                              # ...and possibly this way too
+python -m roboto.upload_agent --help                 # the only invocation form
+python -m roboto.upload_agent run --help             # confirm this build's run flags
 roboto --suppress-upgrade-check users orgs           # credentials valid; enumerates orgs
 ```
 
@@ -63,11 +63,11 @@ Record:
 
 - **Which invocation form works.** Everything downstream — the service unit, the runbook — names one.
 - **The org**, and whether the user belongs to more than one. A machine that uploads unattended cannot answer an ambiguity prompt.
-- **How credentials reach the agent.** The agent reads them from the environment. On a headless machine there is no one to complete an interactive login, so the credential has to be present non-interactively and has to survive a reboot. Settle this now; it is the most common reason an agent that worked during setup stops working the next morning.
+- **How credentials reach the agent.** It resolves an API key or bearer token from the environment if one is set, and otherwise falls back to a profile in the SDK's config file — either is fine. What matters is that the credential is readable **by the user the service will run as** and survives a reboot; a key exported in an interactive shell profile satisfies neither, and is the most common reason an agent that worked during setup is not running the next morning. Credentials are also resolved once per process, so under the continuous mode a rotated key needs a restart.
 - **The service manager**, if the machine has one, and whether the user can install units on it.
 - **Whether an existing agent configuration is already present.** The configure step overwrites it after prompting. Read it first and preserve anything the user still wants.
 
-If the user's data should be attributed to a specific robot, check whether that device is registered in the org. Devices are a platform concept the agent refers to by id, and the id has to exist.
+**Do not plan on the agent attributing data to a device.** The marker's model accepts a device id and a dataset name, and the agent passes neither when it creates the dataset — only description, metadata, tags, and the org. Both fields parse cleanly and are discarded, so a dataset the agent uploads arrives unnamed and unattributed. If the user needs either, it is a step after upload (`roboto datasets update`, or a trigger), and it belongs in the plan as such.
 
 ## Phase 1 — Decompose the deployment
 
@@ -85,7 +85,7 @@ That last one is not a detail. An agent scanning a directory a recording is stil
 | Dataset granularity | What becomes one dataset — a run, a day, a directory, everything merged? | Structural, and expensive to change once a fleet has uploaded under the wrong shape |
 | Marker discipline | Does something already write the per-directory marker, or must the agent create markers itself? | Decides whether auto-creation is needed, and auto-creation only looks one level deep (rule 6) |
 | Completion signal | How does the agent know a recording is finished? | The failure above. A marker written by whatever ends the recording is the reliable answer |
-| Device attribution | Which device produced this data? | Attribution is set when the dataset is created and is tedious to backfill |
+| Device attribution | Which device produced this data, and what names the dataset? | The agent sets neither — both are dropped on the floor. Decide now what applies them afterwards, or accept unnamed, unattributed datasets |
 | Dataset metadata | Tags, description, name, collections — set from what? | The marker file carries them, and environment variables can be interpolated (rule 11) |
 | Cadence | One shot per recording, or a continuously running agent? | Decides whether a service manager is involved at all |
 | Delete after upload | Should the local copy be removed once uploaded? | **Destroys data.** See rule 3; this axis is never resolved by judgment |
@@ -105,9 +105,9 @@ State the directory layout, each resolved axis, both config files you are about 
 Two files, two scopes, and confusing them is the most common configuration error (rule 1):
 
 - **The agent config**, one per machine, in the user's Roboto config directory. It says which directories to scan, what marker filename to look for, and the machine-wide deletion settings.
-- **The per-directory marker**, one per recording, whose presence is what tells the agent "this directory is a dataset, upload it". It carries that dataset's own properties: name, description, metadata, tags, device id, collections, and per-directory include and exclude patterns.
+- **The per-directory marker**, one per recording, whose presence is what tells the agent "this directory is a dataset, upload it". It carries that dataset's own properties — of which the agent applies description, metadata, tags, the org, and the per-directory include and exclude patterns. The model also accepts a name and a device id and the agent ignores both.
 
-The module ships an interactive `configure` subcommand that writes the agent config after prompting. Prefer it over hand-writing the file, since it is authoritative about the current field set — then read the file back and adjust what the prompts do not cover. Note that it overwrites an existing config after a confirmation prompt, which means it needs a terminal; when you cannot supply one, write the file directly against the model in `references/agent-api.md` and confirm it parses by running the agent.
+The module ships an interactive `configure` subcommand that writes the agent config after prompting. Prefer it over hand-writing the file — it is authoritative about field *spelling*, though not coverage: it asks about three of the six fields and writes the rest at their defaults. Read the file back and set what the prompts never raised. Note that it overwrites an existing config after a confirmation prompt, which means it needs a terminal; when you cannot supply one, write the file directly against the model in `references/agent-api.md` and confirm it parses by running the agent.
 
 Write the marker as a **template** the user can copy or generate, not just as one file in one directory. Where recordings are created by another process, the durable answer is that process writing the marker when it finishes; where they are not, auto-creation covers it, with the constraint in rule 6.
 
@@ -129,17 +129,19 @@ Run the agent once — not in its continuous mode — against one scratch record
 
 1. **Stage a scratch recording.** A new directory under a real search path, containing a small representative file and the marker. Do not use a directory holding data the user cannot lose; deletion is off, but this is the run that proves it.
 
-2. **Run once, verbosely.** The agent's verbosity flags are stackable, and the interesting detail is well below the default level. A single run is the right gate: continuous mode adds a sleep loop and nothing you want to debug through.
+2. **Run once, at maximum verbosity.** The verbosity flag is counted but **not monotonic**: the default is already INFO, one `-v` drops it to WARNING, two returns it to INFO, and only three adds DEBUG. So `-v` makes the run quieter than no flag at all — use `-vvv`. A single run is the right gate: continuous mode adds a sleep loop and nothing you want to debug through.
 
 3. **Read the log for the decisions, not just the outcome.** It reports which search paths it scanned, which directories it skipped and why, how many markers it found, and how many datasets it created. A run that reports finding no markers has not uploaded anything, whatever else it says.
 
-4. **Confirm the dataset in Roboto**, not on disk: it exists, it is in the right org, its files are all present and the right size, and its name, description, tags, metadata, device attribution, and collection membership are what the marker asked for. `roboto datasets show` and `roboto datasets list-files` are the check.
+4. **Confirm the dataset in Roboto**, not on disk: it exists, it is in the right org, and its description, tags, metadata, and collection membership are what the marker asked for. Do **not** check the name or device attribution — the agent does not set them (rule 1). `roboto datasets show` and `roboto datasets list-files` are the check.
+
+   The file list will not match the directory exactly. Expect two extra artifacts: the marker itself is uploaded before being deleted locally, and the completion file is uploaded after the fact. Only the in-progress file is excluded. Count those as expected rather than as a defect.
 
 5. **Confirm the local state files.** A completed upload leaves a completion marker in the directory naming the dataset it went to. That file is the agent's memory, and it is why the next run does not upload the same data again.
 
 6. **Run again and confirm nothing is re-uploaded.** This proves idempotency, and it is what makes a continuously running agent safe. A second dataset appearing here is a defect to fix now, not after the agent is running every thirty seconds.
 
-7. **Test the interrupted case.** Interrupt a run mid-upload, or stage a directory carrying an in-progress marker, and confirm the next run resumes into the same dataset rather than creating a second one (rule 5).
+7. **Test the interrupted case.** Interrupt a run mid-upload — the marker survives, since it is deleted only on success — and confirm the next run resumes into the same dataset rather than creating a second one (rule 5). Staging the case by hand needs **both** the marker and an in-progress file naming a dataset that really exists: discovery is driven by the marker alone, so an in-progress file on its own is never seen, and a fabricated dataset id raises rather than resuming.
 
 Record each check and what it showed in `SPEC.md`. If the round trip fails, fix it here; every later phase assumes it works.
 
@@ -178,6 +180,6 @@ If you cannot install or start the service — no permission, no service manager
 3. **Deletion status**, stated explicitly whether it is on or off. If on, say so in its own line; this is the fact the user must not learn later.
 4. **Credentials** — how the agent gets them, and what will break the setup: an expiring token, a rotated key, a credential that lives only in an interactive shell profile.
 5. **What is not covered** — directories outside the search paths, recordings that never get a marker, the rest of the fleet.
-6. **The runbook**, in `SPEC.md` and in the report: how to check whether it is running, where the logs go, how to force a re-upload of a directory the agent considers finished, and what an orphaned lock looks like when it silently stops everything (rule 8).
+6. **The runbook**, in `SPEC.md` and in the report: how to check whether it is running, where the logs go, how to force a re-upload (two steps — delete the completion file *and* restore the marker, since a successful upload deletes the marker and without it the directory is no longer discovered at all), and what an orphaned lock looks like when it silently stops everything (rule 8).
 
 Then point at what happens next, unrun: uploaded files are not ingested files. Getting topics out of them is an ingestion action on upload, which is `create-roboto-trigger` plus whichever ingestion action fits the format — `create-roboto-ingestion-action` if the format is not one Roboto already supports.

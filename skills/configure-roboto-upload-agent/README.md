@@ -51,7 +51,7 @@ On an agent without slash commands, point it at `configure-roboto-upload-agent/S
 1. Establishes how the agent is invoked on this machine, how credentials reach it, and whether a configuration is already in place.
 2. Maps your actual directory layout before configuring anything — including the question that decides whether this works at all: **how the agent knows a recording is finished.**
 3. Interviews you on the axes your layout cannot answer, and writes both config files: the machine's agent config, and the per-directory marker whose presence is what says "this directory is a dataset".
-4. **Verifies one complete round trip** with deletion turned off: a scratch recording uploads, the dataset in Roboto carries the right files and the right attribution, the local state file names it, a second run uploads nothing, and an interrupted run resumes into the same dataset rather than creating a second one.
+4. **Verifies one complete round trip** with deletion turned off: a scratch recording uploads, the dataset in Roboto carries the right files, description, tags and metadata, the local state file names it, a second run uploads nothing, and an interrupted run resumes into the same dataset rather than creating a second one.
 5. Only then revisits the delete-after-upload decision, and verifies it separately.
 6. Makes it unattended — a service unit or a hook on whatever ends a recording — and verifies it as installed, including across a reboot if you permit one.
 7. Hands off a runbook: how to tell whether it is running, how to force a re-upload, and what a silently stopped agent looks like.
@@ -82,9 +82,9 @@ Delivered as a directory you can commit, so the second machine is a copy of a pr
 
 ## Staying current with the SDK
 
-This component is thinly covered on `docs.roboto.ai` compared to the rest of the platform, which raises the authority of the installed module and lowers everything else. The skill's ladder puts `python -m roboto.upload_agent --help` and the module's own config models first, and treats its bundled `references/agent-api.md` as a map rather than a citation. No config field is written from memory: both files are validated on load, and a misspelled field fails at run time rather than being ignored.
+This component is thinly covered on `docs.roboto.ai` compared to the rest of the platform, which raises the authority of the installed module and lowers everything else. The skill's ladder puts `python -m roboto.upload_agent --help` and the module's own config models first, and treats its bundled `references/agent-api.md` as a map rather than a citation. No config field is written from memory: neither model rejects unknown keys, so a misspelled or misplaced field is silently dropped and the run proceeds on the default — a typo presents as "the setting had no effect", with nothing in the log.
 
-One consequence worth knowing up front: the module's log messages refer to a `roboto-agent` command, and whether that command exists depends on how the SDK was installed. The skill establishes which invocation form actually works before writing any service unit or runbook that depends on one.
+One consequence worth knowing up front: the module's log messages tell you to run `roboto-agent`, and no such command exists — the package ships a single console script, `roboto`. The agent runs as `python -m roboto.upload_agent`, which is what the skill puts in the service unit and the runbook.
 
 ## After it ships
 
