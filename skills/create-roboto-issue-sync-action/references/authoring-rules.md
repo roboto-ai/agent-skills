@@ -2,7 +2,7 @@
 
 These supplement the general action authoring rules in `create-roboto-action`; they do not replace them. Every rule there about the runtime contract, dry-run gating, parameter validation, packaging, and tests still applies. The rules below are the ones specific to writing into a system outside Roboto.
 
-Cite the rule number when a requirement forced a choice.
+Both files number their rules from 1, so **cite these as "sync rule N"** and the general ones as "action rule N". The overlaps are near-misses that read as plausible — sync rule 3 is the clean-result posture while action rule 3 is dry-run gating, sync rule 7 is unknown labels while action rule 7 is empty input — so an unqualified number resolves to the wrong document.
 
 ## Identity
 
@@ -16,11 +16,13 @@ Cite the rule number when a requirement forced a choice.
 
 ## Credentials
 
-5. **Credentials arrive as secrets, never as literals.** Store the token in Roboto's secret store and pass its secret URI as a parameter; the runtime resolves it at invocation time. Never a literal token in `action.json`, in the repository, on a command line, or in a trigger's parameter values. Rotating a credential should mean updating the secret, not redeploying the action.
+5. **Credentials arrive as secrets, never as literals.** Store the token in Roboto's secret store and pass its secret URI as a parameter; the runtime resolves it at invocation time. Never a literal token in `action.json`, in the repository, or in a trigger's parameter values. Rotating a credential should mean updating the secret, not redeploying the action.
+
+    Note the one place this rule collides with the tooling: the CLI's secret-write verb takes the value as a positional argument, so writing a secret that way puts it in `argv` — in the process list and in shell history. Use the web UI or the SDK to create the secret. If the CLI is unavoidable, name it as a deliberate exception rather than letting it pass unremarked.
 
 ## Content
 
-6. **Rewrite platform-internal URIs into browser-openable links.** Findings frequently reference data using Roboto's own URI scheme, which renders in an issue as inert text. Rewrite those into ordinary web URLs before posting, so a reader can click from the issue straight into the visualizer at the referenced signal and time. An issue whose evidence cannot be opened is a paragraph of assertions.
+6. **Rewrite platform-internal URIs into browser-openable links.** Roboto URIs turn up in prose findings — a dataset summary, an agent's written output — rather than in tags, metadata, or events, and they render in an issue as inert text. The rewrite target is the web app's open endpoint, which is specified in neither the SDK nor the public docs, so confirm its current form against the app rather than assuming this one. Rewrite those into ordinary web URLs before posting, so a reader can click from the issue straight into the visualizer at the referenced signal and time. An issue whose evidence cannot be opened is a paragraph of assertions.
 
 7. **Know what your tracker does with an unknown label.** Providers differ, and the difference is not cosmetic: some create a label on first use, some reject the request, some silently drop the unknown ones and apply the rest. That third behavior is the dangerous one, because the issue is created successfully and is missing exactly the information it was filed to convey. Verify empirically against the scratch project, and if labels must pre-exist, either provision them or degrade to putting the finding in the body.
 
@@ -40,7 +42,7 @@ Cite the rule number when a requirement forced a choice.
 
 14. **Never let a tracker failure lose the findings.** The findings are the valuable part; the tracker is a destination for them. Write the report to the Roboto side first, then sync. If the sync fails, the work survives and the run can be repeated. The reverse order means a tracker outage discards an analysis.
 
-15. **Dry run cannot preview an external write.** Gate the sync on the dry-run flag like any other side effect, and log the issue that would have been created or updated, with its title, labels, state, and target. Be honest in the spec that the dry-run path exercises everything except the call itself, so local verification does not substitute for the real gate.
+15. **Dry run cannot preview an external write — and must gate both halves.** Gate the tracker call on the dry-run flag like any other side effect, and log the issue that would have been created or updated, with its title, labels, state, and target. **Gate the stamp on it too.** Gating the create but not the stamp is worse than gating neither: the dry run writes a stamp for an issue that was never filed, the next real run reads that stamp and takes the update branch, and the issue is never created at all — sync rule 11's failure arriving from the other direction. Be honest in the spec that the dry-run path exercises everything except the call itself, so local verification does not substitute for the real gate.
 
 ## Structure
 

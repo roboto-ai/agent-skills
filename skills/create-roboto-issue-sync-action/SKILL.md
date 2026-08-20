@@ -72,7 +72,7 @@ Delegate the standard action preflight, then add:
 
 - **Where the findings come from.** This action reads results that already exist in Roboto — tags, events, a dataset summary, an analysis action's output, an agent's triage verdict. Confirm they are actually there for a real dataset. An action that syncs findings nothing produces is untestable.
 
-**Never put the credential on a command line or in a file in the repository**, including during preflight. Read it from the environment for the manual call, and see rule 5 for how it reaches the action.
+**Never put the credential on a command line or in a file in the repository**, including during preflight. Read it from the environment for the manual call, and see sync rule 5 for how it reaches the action.
 
 ## Phase 1 — Decompose and resolve
 
@@ -86,15 +86,15 @@ If that sentence cannot be written, the ambiguity is in the mapping, and it is S
 
 | Axis | What is undetermined | Consequence of guessing wrong |
 |---|---|---|
-| **Identity** | What makes an issue the same issue next run — one dataset, one file, one detected incident? | **The central decision.** Wrong, and every re-analysis files a duplicate. See rule 1 |
+| **Identity** | What makes an issue the same issue next run — one dataset, one file, one detected incident? | **The central decision.** Wrong, and every re-analysis files a duplicate. See sync rule 1 |
 | Stamp location | Where the issue's identity is recorded on the Roboto side | Determines whether identity survives, and whether the issue is discoverable from Roboto |
 | Trigger scope | Which datasets or files sync at all | An over-broad trigger files issues for everything in the org |
 | Content | Which findings become the issue body — summary, events, tags, links, all of it? | An issue nobody reads is worse than no issue |
-| Labels | Which findings become labels, and under what naming scheme? | Providers differ on whether unknown labels are created or rejected (rule 7) |
-| Clean-result posture | What happens when the analysis finds nothing wrong? | Three defensible answers, and they produce very different issue lists. See rule 3 |
+| Labels | Which findings become labels, and under what naming scheme? | Providers differ on whether unknown labels are created or rejected (sync rule 7) |
+| Clean-result posture | What happens when the analysis finds nothing wrong? | Three defensible answers, and they produce very different issue lists. See sync rule 3 |
 | State transitions | Should the issue close when a finding clears, and reopen when it returns? | Determines whether the open-issue list means anything |
 | Assignment | Should issues be assigned, or given a milestone or project field? | Usually the reason a team asked for this at all |
-| Unconfigured posture | What happens when the tracker parameters are absent? | Degrading to a written report keeps the action useful and testable (rule 8) |
+| Unconfigured posture | What happens when the tracker parameters are absent? | Degrading to a written report keeps the action useful and testable (sync rule 8) |
 | Failure posture | Tracker unreachable or rejecting — fail the invocation, or log and continue? | Decides whether a tracker outage pages whoever owns the trigger |
 | Direction | Does anything flow back from the tracker into Roboto? | Out of scope for this skill. Say so if the user wants it |
 
@@ -110,9 +110,9 @@ State the mapping sentence, the resolved axes, and the verification you will run
 
 Delegate scaffolding, then implement against `references/sync-contract.md`, which carries the mechanics in full. The shape:
 
-- **A thin tracker client** — create, update, fetch-one, and set-state, each with a timeout, each returning a result rather than raising into the action's main path (rules 9 and 10).
-- **A rendering step** that turns findings into the issue body, and rewrites any Roboto-internal URIs into browser-openable links so a reader can click from the issue back into the data (rule 6).
-- **A sync step** that reads the stamp, decides create-or-update, and re-stamps on create — confirming the stamp landed, since a create that succeeds while its stamp fails duplicates forever (rule 11).
+- **A thin tracker client** — create, update, fetch-one, and set-state, each with a timeout, each returning a result rather than raising into the action's main path (sync rules 9 and 10).
+- **A rendering step** that turns findings into the issue body, and rewrites any Roboto-internal URIs into browser-openable links so a reader can click from the issue back into the data (sync rule 6).
+- **A sync step** that reads the stamp, decides create-or-update, and re-stamps on create — confirming the stamp landed, since a create that succeeds while its stamp fails duplicates forever (sync rule 11). Gate the stamp on the dry-run flag alongside the tracker call, never separately (sync rule 15).
 - **A `main` that stays an orchestrator**, with the decisions in module-level functions taking plain values, so the tests in Phase 3 can reach them without a network.
 
 Keep everything the tracker's API shape touches inside the client. The rest of the action should not know whether it is talking to GitLab or GitHub, which is also what makes a second provider cheap later.
@@ -124,7 +124,7 @@ Delegate the standard test rules. The sync logic is unusually well suited to the
 - Stamp absent → create.
 - Stamp present and the issue exists → update, and **no create call**.
 - Stamp present and the issue is gone → create, and re-stamp.
-- Stamp present and the existence check **errored** → update, not create (rule 2).
+- Stamp present and the existence check **errored** → update, not create (sync rule 2).
 - Clean result → whatever Phase 1's posture said.
 - Finding clears, then returns → the state transitions both ways.
 
@@ -135,12 +135,12 @@ Each of those is a function taking plain values and a fake client. None of them 
 Delegate the standard gates, then run these against the scratch project. The property under test is not "an issue appeared" — it is **"exactly one issue exists after running twice."**
 
 1. **First run.** An issue appears. Its title matches the pattern, its body carries the findings and links back to the dataset and the invocation, its labels are what the findings said, and its state matches the clean-result posture.
-2. **The Roboto side is stamped.** The entity carries the issue's identity and its URL, so the link works in both directions (rule 4).
+2. **The Roboto side is stamped.** The entity carries the issue's identity and its URL, so the link works in both directions (sync rule 4).
 3. **Second run, same input, nothing changed.** **The gate.** The same issue is updated. No second issue exists. Confirm by listing the project's issues, not by reading the log.
 4. **Second run with a changed finding.** The body and labels update, and the state follows the transition rules Phase 1 settled.
 5. **Deleted-issue recovery.** Delete the issue in the tracker, then run again. A fresh issue is created, the entity is re-stamped, and nothing raises. Users tidy issue boards; a stamp pointing at a deleted issue is a matter of when, not if.
 6. **Unconfigured.** Run with the tracker parameters absent and confirm the action degrades as Phase 1 decided rather than failing.
-7. **Bad credential.** Run with an invalid token and confirm the failure posture holds — and that the token does not appear in the logs (rule 12).
+7. **Bad credential.** Run with an invalid token and confirm the failure posture holds — and that the token does not appear in the logs (sync rule 12).
 
 Read the tracker, not the log, for every check that concerns the tracker. A log line saying an issue was created is the action's belief; the project's issue list is the fact.
 

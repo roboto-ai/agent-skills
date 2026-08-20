@@ -83,7 +83,7 @@ An action that files issues is one of the few whose first wide run is genuinely 
 
 Trackers differ in ways that are invisible until they bite. The skill's ladder puts **the tracker's own API responses above its documentation**, because cloud and self-hosted versions of the same product disagree, and so do plan tiers.
 
-The one worth naming up front: **unknown labels**. Some trackers create a label on first use, some reject the request, and some silently drop the unknown ones and file the issue anyway — successfully, and missing exactly the information it was filed to convey.
+The one worth naming up front: **unknown labels**. A tracker may create a label on first use, reject the request, or silently drop the unknown ones and file the issue anyway — successfully, and missing exactly the information it was filed to convey. Which of the three yours does is something the skill makes you verify empirically against a scratch project, not something it assumes.
 
 ## Deliverables
 
