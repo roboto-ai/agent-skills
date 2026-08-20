@@ -2,7 +2,7 @@
 
 These supplement the general action authoring rules in `create-roboto-action`; they do not replace them. Every rule there about the runtime contract, dry-run gating, output handling, packaging, and tests still applies. The rules below are the ones specific to writing topics.
 
-Cite the rule number when a requirement forced a choice.
+Both files number their rules from 1, so **cite these as "ingestion rule N"** and the general ones as "action rule N". The overlaps are near-misses that read as plausible — ingestion rule 3 is the timestamp unit while action rule 3 is dry-run gating — so an unqualified number resolves to the wrong document.
 
 ## The ingestion contract
 
@@ -12,13 +12,13 @@ Cite the rule number when a requirement forced a choice.
 
 3. **A numeric timestamp column needs its unit stated explicitly.** The DataFrame path can infer a timestamp column when it is a timezone-aware datetime, but a column of numbers is ambiguous by construction, and the SDK requires the unit rather than guessing. Passing seconds while declaring milliseconds produces data that ingests cleanly and is wrong by three orders of magnitude — visible only when someone tries to align two topics.
 
-4. **Choose each field's canonical type deliberately.** The canonical type is Roboto's normalized type, and it is what enables the platform's typed features — plotting numbers, rendering images, reading timestamps, handling arrays. The enum includes an explicit fallback for genuinely unknown types; the SDK's own documentation says to use it sparingly. Typing a column of floats as unknown because it was easier is a silent feature loss that only re-ingestion fixes. Read the enum for the current members.
+4. **Choose each field's canonical type deliberately.** The canonical type is Roboto's normalized type, and it is what enables the platform's typed features — plotting numbers, rendering images, reading timestamps, handling arrays, and **rendering maps**, which is what the four geographic members exist for. Miss those on a GPS stream and the coordinates plot as ordinary numbers. A categorical path additionally needs its ordered values listed in the path's metadata, or clients render it as a plain string. The enum includes an explicit fallback for genuinely unknown types; the SDK's own documentation says to use it sparingly. Typing a column of floats as unknown because it was easier is a silent feature loss that only re-ingestion fixes. Read the enum for the current members.
 
 5. **Topic names are unique within a file, and should be stable across files.** A name that embeds a per-file identifier, a timestamp, or a session id makes fleet-wide querying impossible: the same signal from two recordings becomes two unrelated topics. Preserve the source's own stream names when it has them, and put the varying part in metadata rather than in the name.
 
 6. **Make ingestion idempotent, and know which tier gives it to you.** The DataFrame path updates an existing topic of the same name on the same file in place, so re-running converges. The low-level path has no such guarantee: creating a topic that already exists conflicts, and adding a message path that already exists conflicts. Handle both, because triggers retry and operators re-invoke. Verify by ingesting the same file twice and confirming the record count did not double.
 
-7. **Capture units at ingestion time or lose them.** A unit belongs on the message path where it is declared. It is not recoverable afterwards without re-ingesting every file, and a fleet's worth of unlabelled radians-or-degrees is a problem that compounds daily. Where the source format does not record units, ask the user; where the user does not know, record that gap in the spec explicitly rather than leaving the field bare and unremarked.
+7. **Capture units at ingestion time or lose them — and know that the tier decides how.** A unit is not recoverable afterwards without re-ingesting every file, and a fleet's worth of unlabelled radians-or-degrees compounds daily. On Tier 2 you pass it directly, in the message path's metadata. **On Tier 1 you cannot**: the frame path infers every canonical type from the Arrow schema and attaches a unit only to the timestamp path, and neither `File.add_topic` nor its `Topic` equivalent accepts per-field units or types. A Tier 1 action that needs units, or a corrected canonical type, must follow the frame write with `topic.update_message_path(...)` for each affected path. Plan those calls as part of the action rather than discovering the gap at verification. Where the source format does not record units, ask the user; where the user does not know, record the gap in the spec rather than leaving the field bare and unremarked.
 
 ## Input handling
 
@@ -32,7 +32,7 @@ Cite the rule number when a requirement forced a choice.
 
 ## Packaging
 
-12. **Declare the extra the chosen tier needs, as a runtime dependency.** The DataFrame path needs the SDK's ingestion extra; reading topic data back needs the analytics extra. They are different extras, and an action that ingests through frames and also reads data back needs both. An extra left in the dev dependency table works locally and raises an import error inside the container.
+12. **Declare the extra the chosen tier needs, as a runtime dependency.** The DataFrame path needs the SDK's ingestion extra; reading topic data back needs the analytics extra. They are different extras, but not disjoint — analytics is a superset, so an action that both ingests through frames and reads data back can declare analytics alone. Declare the ingestion extra when the action only writes. An extra left in the dev dependency table works locally and raises an import error inside the container.
 
 13. **Declare the parsing library's system packages in the Dockerfile.** Format parsers routinely link against system libraries or shell out to binaries that are present on a workstation and absent from a container image. This fails only in the container, which is the most expensive place to discover it.
 

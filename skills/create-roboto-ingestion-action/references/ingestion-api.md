@@ -16,7 +16,7 @@ A map for running the Phase 1 interview and knowing what to look up. Rung 4 of t
 
 A **file** belongs to a dataset. A **topic** belongs to a file and represents one stream of time-series data. A topic carries **message paths** — one per field, or per column, of that stream — each with a native type from the source format and a canonical type that Roboto normalizes to. A message path carries **representations**: pointers to where the data actually lives, in a supported storage format.
 
-The last of those is the one that gets forgotten, and the reason for authoring rule 1: topics and message paths are metadata. Representations are the data. A topic with no representation is a schema with nothing behind it.
+The last of those is the one that gets forgotten, and the reason for ingestion rule 1: topics and message paths are metadata. Representations are the data. A topic with no representation is a schema with nothing behind it.
 
 ## Tier 1 — from a DataFrame
 
@@ -26,13 +26,14 @@ The high-level path, and the default. Confirm the signature:
 .venv/bin/python -c "import inspect; from roboto import File; print(inspect.signature(File.add_topic))"
 ```
 
-`File.add_topic(topic_name, df, timestamp_column=..., timestamp_unit=...)` takes a pandas DataFrame and does the rest: infers the schema and statistics from the frame, derives the message paths, serializes the data, and registers the representation. The SDK's own guidance is to prefer this over the equivalent classmethod on `Topic` for most cases.
+`File.add_topic(topic_name, df, timestamp_column=..., timestamp_unit=...)` takes a pandas DataFrame and does the rest **client-side, inside the action's own container**: serializes the frame to Parquet in a temporary directory, infers the schema and per-path statistics from it, uploads that Parquet, and registers it as the topic's default representation. Nothing is inferred server-side, so the container needs memory for the frame and disk for the Parquet. The SDK's own guidance is to prefer this over the equivalent classmethod on `Topic` for most cases.
 
 Three properties matter for the phases above:
 
-- **It updates in place.** A topic of the same name on the same file is updated rather than duplicated, which is where authoring rule 6's idempotency comes from on this tier.
+- **It updates in place.** A topic of the same name on the same file is updated rather than duplicated, which is where ingestion rule 6's idempotency comes from on this tier.
 - **The timestamp column must be identified.** A timezone-aware datetime column can be detected automatically; a numeric column cannot, and its unit must be stated. Valid units are the members of the SDK's `TimeUnit`.
-- **It needs the ingestion extra.** `roboto[ingestion]`, which brings pandas and pyarrow. Distinct from `roboto[analytics]`, which is what reading data back needs.
+- **It needs the ingestion extra.** `roboto[ingestion]`, which brings pandas and pyarrow. Distinct from `roboto[analytics]` — but analytics is a superset of it, so an action that both writes frames and reads data back can declare analytics alone.
+- **You do not choose the schema on this tier.** Canonical types come from the Arrow types, and only the timestamp path gets a unit. Setting either yourself means a follow-up `topic.update_message_path(...)` per affected path.
 
 `Topic.create_from_df(file_id, dataset_id, topic_name, df, ...)` is the same capability when you hold ids rather than a `File`.
 
@@ -48,15 +49,15 @@ The low-level path. Three calls, and all three are required for readable data.
 
 - `message_path` is the dot-delimited display path (`pose.position.x`).
 - `data_type` is the source format's own type, as a string (`float32`, `uint8[]`, `geometry_msgs/Pose`). It is for display and fidelity to the source.
-- `canonical_data_type` is Roboto's normalized type, and is what enables typed platform features. Read the members from `roboto.domain.topics.CanonicalDataType`; they cover numbers and number arrays, strings, booleans, bytes, categoricals, arrays, objects, images, timestamps, and an explicit unknown fallback the SDK says to use sparingly.
-- `path_in_schema` is the exact path in the source schema, as a list. It defaults to splitting the message path on dots — which is why authoring rule 10 exists for nested or dot-containing names.
+- `canonical_data_type` is Roboto's normalized type, and is what enables typed platform features. Read the members from `roboto.domain.topics.CanonicalDataType`; they cover numbers and number arrays, strings, booleans, bytes, categoricals, arrays, objects, images, timestamps, **four geographic members for latitude and longitude** (float and integer-encoded degrees) which are what enable map rendering, and an explicit unknown fallback the SDK says to use sparingly. A categorical path also needs its ordered values listed in the path's metadata, or clients render it as a plain string.
+- `path_in_schema` is the exact path in the source schema, as a list. It defaults to splitting the message path on dots — which is why ingestion rule 10 exists for nested or dot-containing names.
 
 Adding a message path that already exists conflicts.
 
 **`Topic.add_message_path_representation(message_path_id, association, storage_format, version, format=..., transformations=...)`** — the step that makes the data readable.
 
 - `association` points at where the data lives, built with the helpers in `roboto.association` (a file association being the usual case).
-- `storage_format` is a member of `roboto.domain.topics.RepresentationStorageFormat`; read the enum for the supported formats.
+- `storage_format` is a member of `roboto.domain.topics.RepresentationStorageFormat`, which has exactly two members: MCAP and Parquet. These are the only formats the platform's readers accept, so there is no representation that points at an mp4, a JPEG, or a PCD file directly — such payloads are carried inside an MCAP, with `format` naming the encoding. A representation in any other storage format is unreadable.
 - `version` is the representation's version number.
 - `format` describes the content (`jpeg`, `sensor_msgs/Image`), and `transformations` records any applied (`downsample:0.5`).
 
@@ -66,7 +67,8 @@ The verification gate. Needs `roboto[analytics]`.
 
 - `file.get_topics()` yields the file's topics — a generator that yields nothing for a file Roboto has not ingested.
 - `file.get_topic(name)` raises when the topic is absent.
-- `topic.get_data_as_df()` returns the topic's data as a DataFrame. **This is the check that distinguishes an ingested topic from a metadata-only one.** A topic that lists fine and returns an empty or failing frame here has no representation.
+- `topic.get_data_as_df()` returns the topic's data as a DataFrame, indexed by a timezone-aware `DatetimeIndex` rather than by raw nanosecond integers. **This is the check that distinguishes an ingested topic from a metadata-only one.** A topic that lists fine and returns an **empty** frame here has no representation. A call that *raises* about no compatible reader means the opposite — representations exist, but in (or mixing) storage formats the readers do not accept; an import error there means the analytics extra is missing.
+- `topic.get_data()` yields `(timestamp, record)` pairs with the timestamp as nanoseconds since the epoch — the way to inspect raw timestamp values.
 - The topic's message paths and their schema are on the topic record, and are what Phase 4 step 2 compares against the Phase 1 inventory.
 
 ## The experimental declarative path
@@ -79,4 +81,4 @@ Build on the stable surface above. Mention this one in the final report as somet
 
 ## Exit codes
 
-An ingestion action is the canonical user of the runtime's data-error exit code: the input file was the wrong format, corrupted, or empty, and the action did the right thing by rejecting it. Read the codes from `roboto.action_runtime.exit_codes.ExitCode`, and see authoring rule 8.
+An ingestion action is the canonical user of the runtime's data-error exit code: the input file was the wrong format, corrupted, or empty, and the action did the right thing by rejecting it. Read the codes from `roboto.action_runtime.exit_codes.ExitCode`, and see ingestion rule 8.

@@ -70,7 +70,7 @@ Topics and message paths are metadata. Representations are the data.
 
 An action that creates topics and adds message paths — and stops there — produces topics that appear in every listing, carry a full schema, and look completely ingested. They return nothing to any data-access call. Nothing errors. The action exits zero.
 
-So the gate is not "do the topics exist". It is: **fetch each topic's data as a dataframe and confirm it returns rows**, with the right columns, with timestamps in nanoseconds that span the source file's range, and with three values spot-checked against the source read independently. Then ingest the same file twice and confirm nothing doubled.
+So the gate is not "do the topics exist". It is: **fetch each topic's data as a dataframe and confirm it returns rows**, with the right columns, with a time index that spans the source file's range, and with three values spot-checked against the source read independently. Then ingest the same file twice and confirm nothing doubled.
 
 The high-level DataFrame path registers the representation for you, which is why the skill prefers it. The low-level path does not, which is why the skill's first authoring rule is about it.
 
@@ -78,7 +78,7 @@ The high-level DataFrame path registers the representation for you, which is why
 
 The stable one: `File.add_topic` for tabular data, and `Topic.create` with message paths and representations for everything else.
 
-The SDK also carries a newer declarative ingestion API under its experimental namespace, and it is genuinely nicer. It is not what this skill teaches, because the SDK states that experimental APIs may change in shape, behavior, or semantics before they stabilize and are meant for evaluation rather than long-lived production code — and an ingestion action is exactly the sort of thing a user runs for years. The skill points at it in the final report as something to revisit once it graduates.
+The SDK also carries the beginnings of a declarative ingestion API under its experimental namespace — currently two model classes, with no call yet that submits them. It is worth watching rather than building on, and it is not what this skill teaches, because the SDK states that experimental APIs may change in shape, behavior, or semantics before they stabilize and are meant for evaluation rather than long-lived production code — and an ingestion action is exactly the sort of thing a user runs for years. The skill points at it in the final report as something to revisit once it graduates.
 
 ## Deliverables
 

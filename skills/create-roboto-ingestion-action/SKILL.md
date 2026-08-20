@@ -77,15 +77,15 @@ Open the sample and produce a table: what streams does it contain, how are they 
 |---|---|---|
 | Topic granularity | What becomes one topic — a stream, a message type, a device, the whole file? | Determines everything downstream. Too coarse and unrelated signals share a timeline; too fine and a plot needs ten topics |
 | Topic naming | What are topics called, and is the name stable across files? | Names are how every later query, trigger, and analysis finds the data. A name carrying a per-file id makes fleet-wide comparison impossible |
-| Timestamps | Which field is time, in what unit, and against what epoch? | The single most common ingestion defect. See rules 2 and 3 |
+| Timestamps | Which field is time, in what unit, and against what epoch? | The single most common ingestion defect. See ingestion rules 2 and 3 |
 | Clock integrity | Is time monotonic? Are there resets, gaps, or per-stream clocks? | Determines whether one timeline is honest, and whether the action must repair or reject |
 | Field selection | Every field, or a subset? | Ingesting everything is usually right, but wide records may need a decision |
-| Canonical types | Which fields are numbers, strings, timestamps, images, arrays? | Drives visualization and cross-format reads. Defaulting everything to unknown quietly disables platform features (rule 4) |
+| Canonical types | Which fields are numbers, strings, timestamps, images, arrays? | Drives visualization and cross-format reads. Defaulting everything to unknown quietly disables platform features (ingestion rule 4) |
 | Units | What unit is each numeric field in? | Not recoverable later without re-ingesting. The one piece of metadata users always wish they had captured |
-| Nesting | Are records flat or nested, and how should nested fields be named? | Decides message-path naming and whether the source path must be preserved separately (rule 10) |
+| Nesting | Are records flat or nested, and how should nested fields be named? | Decides message-path naming and whether the source path must be preserved separately (ingestion rule 10) |
 | Non-tabular data | Are there images, video, point clouds, or large binaries? | Decides the ingestion tier in Phase 2. These do not fit a DataFrame |
 | Scale | How large is the largest expected file, and how many records? | Drives compute sizing, and whether the action can hold the file in memory at all |
-| Bad-input posture | What should happen for a corrupt, truncated, or empty file? | Determines the exit code the action reports, which determines whether an operator debugging it looks at the action or at the data (rule 8) |
+| Bad-input posture | What should happen for a corrupt, truncated, or empty file? | Determines the exit code the action reports, which determines whether an operator debugging it looks at the action or at the data (ingestion rule 8) |
 | Partial-failure posture | If one stream fails to parse, ingest the rest or fail the file? | A trigger firing on every upload makes this decision visible daily |
 
 **Without `--yolo`**, interview the user on the axes the file cannot answer — units above all, plus naming conventions and the two failure postures. Lead with your recommendation. Do not ask about anything you can read out of the sample.
@@ -100,11 +100,15 @@ State the inventory table, each resolved ambiguity, the ingestion tier chosen in
 
 Two stable paths write topics, and they differ in how much of the contract you are responsible for. Confirm both against the installed SDK before choosing; `references/ingestion-api.md` maps the surface.
 
-**Tier 1 — from a DataFrame.** Parse the format into a pandas DataFrame per topic and hand it to the file, naming the timestamp column and its unit. The platform infers the schema, derives the message paths and their statistics, serializes the data, and registers the representation. This is one call, and it is the right default whenever the data is tabular.
+**Tier 1 — from a DataFrame.** Parse the format into a pandas DataFrame per topic and hand it to the file, naming the timestamp column and its unit. The SDK does the rest **inside your action's own container**: it serializes the frame to Parquet locally, infers the schema and per-path statistics from it, uploads that Parquet as a representation file, and registers it. One call, and the right default whenever the data is tabular. Because the work is local, size the container for both the in-memory frame and the Parquet on disk (ingestion rule 14).
 
-**Tier 2 — topic, message paths, representation.** Create the topic, add each message path with its native and canonical type, and register a representation pointing at stored data in a supported storage format. You are responsible for every step, including the last one, which is the step that gets forgotten (rule 1).
+What you give up on this tier is control of the schema: canonical types are inferred from the Arrow types, and a unit is attached only to the timestamp path. Declaring either yourself needs a follow-up call — see ingestion rule 7.
 
-Choose Tier 2 only when Tier 1 genuinely cannot express the data: images, video, point clouds, or other large binary payloads that do not belong in a DataFrame; data that is already written in a supported storage format and should be pointed at rather than rewritten; or records too large to hold in memory as a frame. A format with both tabular signals and image streams needs both tiers in the same action, and that is normal.
+**Tier 2 — topic, message paths, representation.** Create the topic, add each message path with its native and canonical type, and register a representation pointing at stored data in a supported storage format. You are responsible for every step, including the last one, which is the step that gets forgotten (ingestion rule 1).
+
+Tier 2 does not free you from the supported storage formats — a representation must be MCAP or Parquet, the only two the platform's readers accept. So "Tier 2 for images and video" means writing an MCAP whose messages carry those payloads and registering a representation against *it*, with the content encoding named separately; it never means pointing a representation at the original binary file.
+
+Choose Tier 2 only when Tier 1 genuinely cannot express the data: image, video, or point-cloud payloads that do not belong in a DataFrame; data already written as MCAP or Parquet that should be pointed at rather than rewritten; or records too large to hold in memory as a frame. A format with both tabular signals and image streams needs both tiers in the same action, and that is normal.
 
 State the chosen tier and its justification in `SPEC.md`. Under `--yolo`, prefer Tier 1 and use Tier 2 only for the parts that force it.
 
@@ -119,7 +123,7 @@ Delegate scaffolding to `create-roboto-action` Phase 2, then implement with thes
 - **The parser is the substance, and it is testable without the platform.** Keep format parsing in module-level functions that take a path and return frames or plain values. Those functions get real unit tests against a checked-in fixture — a small, redistributable sample. Everything that touches Roboto stays in a thin layer above them.
 - **Never assume the file is well-formed.** Rule 8: a corrupt, truncated, or empty input is a data error the action reports as such, not a traceback.
 - **Ingestion writes to the platform, so it is a side effect.** Gate it on the dry-run flag like any other, and log what would have been ingested: topic names, message-path counts, record counts, time ranges. Those logs are what makes a dry run worth reading.
-- **Make it idempotent.** Rule 6 covers what the DataFrame path does for you here, and what Tier 2 does not.
+- **Make it idempotent.** Ingestion rule 6 covers what the DataFrame path does for you here, and what Tier 2 does not.
 
 Declare the SDK extra the chosen tier needs, as a runtime dependency rather than a dev one.
 
@@ -132,13 +136,13 @@ Delegate the standard gates — the project's verify script, then local invocati
 Run the action against the sample file for real, then, from a Python environment with the SDK's analytics extra:
 
 1. **The topics exist.** List the file's topics. Compare against Phase 1's inventory table: same names, same count, nothing missing, nothing invented.
-2. **The message paths exist**, with the canonical types and units Phase 1 settled. A message path typed unknown that should have been a number is a defect even though nothing failed.
+2. **The message paths exist**, with the canonical types and units Phase 1 settled. On Tier 2 you declared both. On Tier 1 you did not — types were inferred and only the timestamp path carries a unit — so what this step checks there is that the follow-up `update_message_path` calls from ingestion rule 7 actually ran. A message path typed unknown that should have been a number is a defect even though nothing failed.
 3. **The data reads back.** For each topic, fetch its data as a dataframe and confirm it returns rows.
 
-   **This is the step the whole skill exists for.** A topic created without a registered representation is a metadata-only container: it appears in listings, it looks ingested, and it returns nothing to any data-access call. An action that creates topics and stops there passes every other check and has ingested nothing usable. See rule 1.
+   **This is the step the whole skill exists for.** A topic created without a registered representation is a metadata-only container: it appears in listings, it looks ingested, and it returns nothing to any data-access call. An action that creates topics and stops there passes every other check and has ingested nothing usable. See ingestion rule 1.
 
 4. **The columns match** the message paths, and the values are right. Spot-check at least three: first record, last record, and one in the middle, compared against the source file read independently. Values that are plausible are not values that are correct.
-5. **The timestamps are sane.** In nanoseconds, monotonically non-decreasing, and spanning the range the source file covers. An off-by-a-thousand unit error produces data that looks perfect until someone tries to align two topics.
+5. **The timestamps are sane.** `get_data_as_df` does not give you nanosecond integers — it returns a frame indexed by a timezone-aware `DatetimeIndex`, so check that the *index* is monotonically non-decreasing and spans the range the source file covers. To see raw nanosecond values, iterate `topic.get_data()`, which yields `(timestamp, record)` pairs. An off-by-a-thousand unit error shows up here as an index in 1970 or in the far future; left undetected it looks perfect until someone tries to align two topics.
 6. **Re-running converges.** Ingest the same file twice and confirm the second run does not duplicate topics or double the record count.
 
 Then run the **bad-input path**: a truncated or empty file, and confirm the action reports it as a data error rather than crashing, with a message naming the file and the problem.
