@@ -26,6 +26,7 @@ To install without the CLI, copy a skill's folder into your agent's skills direc
 | [create-roboto-trigger](skills/create-roboto-trigger/) | Creates a [Roboto Trigger](https://docs.roboto.ai/learn/actions.html) that invokes an existing action automatically when data arrives or on a schedule, and verifies it against real trigger evaluation records before handing you the command to enable it |
 | [debug-roboto-invocation](skills/debug-roboto-invocation/) | Diagnoses a Roboto Action invocation that failed, hung, or produced the wrong result, working from the invocation's own status history and exit code, and proves the fix by re-running it against the same input |
 | [create-roboto-ingestion-action](skills/create-roboto-ingestion-action/) | Builds an action that ingests a custom or unsupported log format into topics, and verifies it by reading the ingested data back as a dataframe rather than by watching the action exit cleanly |
+| [configure-roboto-upload-agent](skills/configure-roboto-upload-agent/) | Configures, verifies, and runs the Roboto upload agent on a robot, rig, or upload station, proving a full upload round trip before anything is set to delete the local copy |
 
 Each skill's README covers its requirements and usage.
 
