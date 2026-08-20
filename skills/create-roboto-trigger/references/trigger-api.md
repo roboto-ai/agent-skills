@@ -35,7 +35,7 @@ The parameters that carry Phase 1's decisions:
 | Parameter | Carries | Notes |
 |---|---|---|
 | `name` | The trigger's identity | Unique within the organization; how every later command addresses it |
-| `action_name` | Which action to invoke | By name, resolved at evaluation time — not a pinned copy |
+| `action_name` | Which action to invoke | Stored as a name, not a pinned copy. When the name is resolved is server-side behavior the SDK does not state; `action_digest` is the only pin available to you |
 | `action_owner_id` | Whose action | Needed when the action belongs to another org |
 | `action_digest` | Which version | Omit to track the latest version of the action |
 | `required_inputs` | The Required inputs axis | List of glob patterns, validated as non-empty path specs |
@@ -55,9 +55,9 @@ Read the class for the full set. The members this skill's phases depend on:
 - `enable()` / `disable()` — the safe-authoring pair behind rule 2
 - `update(...)` — converges an existing trigger; takes the same fields, `NotSet` for anything left alone
 - `delete()`
-- `wait_for_evaluations_to_complete(timeout=..., poll_interval=...)` — blocks rather than sleeping a guessed interval; raises on timeout
+- `wait_for_evaluations_to_complete(timeout=..., poll_interval=...)` — waits for *known* evaluations to leave `Pending`, and raises `roboto.waiters.TimeoutError` on timeout. **It does not wait for an evaluation to appear:** with no evaluation records yet, its all-elements check over an empty list is vacuously true and it returns at once. Poll `get_evaluations()` until a record newer than your event exists before calling it
 - `latest_evaluation()` — the most recent evaluation record, or `None`
-- `get_evaluations(limit=..., page_token=...)` — the evaluation history, newest first
+- `get_evaluations(limit=..., page_token=...)` — the evaluation history. Newest-first ordering is server-side default behavior rather than an SDK contract, though `latest_evaluation()` relies on it
 - `get_invocations()` — the invocations this trigger produced
 - `get_action()` — the action it targets
 - `invoke(data_source, ...)` — invoke as if the trigger had fired; returns `None` when an idempotency id collides with an existing invocation
@@ -80,15 +80,15 @@ This is what Phase 4 reads. Every member below must be confirmed against the ins
 | `FileMetadataUpdate` | A file's tags or metadata change |
 | `RecurringSchedule` | Reserved for the platform's own use with `ScheduledTrigger`. Passing it to `Trigger.create` is an error |
 
-**`TriggerEvaluationStatus`** — how far the evaluation got: pending, completed, or failed with an unexpected exception. A failed evaluation carries `status_detail`, which is where the exception surfaces.
+**`TriggerEvaluationStatus`** — how far the evaluation got. Exactly three members: `Pending` (created, not yet run), `Evaluated` (ran to completion, whatever the outcome), `Failed` (hit an unexpected exception). There is no `Completed`. A failed evaluation carries `status_detail`, which is where the exception surfaces.
 
-**`TriggerEvaluationOutcome`** — what the completed evaluation decided: it either invoked the action or skipped.
+**`TriggerEvaluationOutcome`** — what an `Evaluated` evaluation decided. Two members: `InvokedAction` and `Skipped`.
 
 **`TriggerEvaluationOutcomeReason`** — why a skip happened. Each member maps to one misconfiguration:
 
 | Reason | Meaning |
 |---|---|
-| `NoMatchingFiles` | Nothing satisfied `required_inputs`. Semantics differ by `for_each` — see rule 4 |
+| `NoMatchingFiles` | Nothing satisfied `required_inputs`. Semantics differ by `for_each`; this member's own docstring in the installed SDK states both readings, and is the authority |
 | `ConditionNotMet` | The condition excluded this data source |
 | `AlreadyRun` | The action has already run for this dataset or file |
 | `TriggerDisabled` | The trigger is not enabled |
@@ -100,6 +100,7 @@ This is what Phase 4 reads. Every member below must be confirmed against the ins
 Resolve these against rung 1 when they matter, and report what you found:
 
 - **Docstring examples in the trigger module reference members that do not exist**, including an evaluation status member and a `trigger_name` attribute on the evaluation record. Read the enum and the record model; do not copy the example.
+- **`Trigger.create`'s own docstring shows a condition API that does not exist.** Its example reads `Condition("metadata.sensor_type").equals("lidar")`. `Condition` is a pydantic model with no positional constructor and no `.equals()` method; build conditions as `Condition(field=..., comparator=Comparator.Equals, value=...)`, or use the `Condition.equals_cond(field, value)` classmethod. Copying the docstring example raises `TypeError`.
 - **What a condition may reference** is stated inconsistently. The CLI describes conditions as dataset tag and metadata expressions; the SDK's prose is broader. If the trigger's correctness depends on a condition over file properties rather than dataset properties, do not assume — verify it in Phase 4 with a negative-path event, and record what you observed in `SPEC.md`.
 - **The default `causes` set** when the parameter is omitted is not specified here. Read it back from the created trigger's record.
 

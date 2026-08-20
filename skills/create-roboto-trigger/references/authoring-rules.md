@@ -12,7 +12,7 @@ Each rule names either a failure mode that keeps a trigger from firing correctly
 
 ## Cause and timing
 
-4. **Know what `required_inputs` means for your `for_each`, because it changes.** The two granularities read the same list differently: a dataset-level trigger looks for a set of files that together satisfy **all** the patterns, while a file-level trigger looks for files matching **any** of them. A three-pattern list that a dataset trigger treats as "all three must be present" is treated by a file trigger as "any one of these". Confirm the current semantics against the skip-reason documentation in `trigger-api.md`, and state in `SPEC.md` which reading the trigger relies on.
+4. **Know what `required_inputs` means for your `for_each`, because it changes.** The two granularities read the same list differently: a dataset-level trigger looks for a set of files that together satisfy **all** the patterns, while a file-level trigger looks for files matching **any** of them. A three-pattern list that a dataset trigger treats as "all three must be present" is treated by a file trigger as "any one of these". Confirm against the `NoMatchingFiles` docstring on `TriggerEvaluationOutcomeReason` in the installed SDK, which states both readings, and record in `SPEC.md` which one the trigger relies on.
 
 5. **Match the cause to what the action reads.** An action that reads ingested topic data must be caused by ingestion completing, not by upload; on upload it runs against a file Roboto has not ingested yet, finds no topics, and either fails or silently does nothing. An action that reads raw file bytes can run on upload. This is the single most consequential decision in the interview.
 
@@ -24,7 +24,7 @@ Each rule names either a failure mode that keeps a trigger from firing correctly
 
 ## Matching and scope
 
-9. **Use the narrowest glob the requirement supports.** `**/*` matches every file at every depth and is a decision to state in the spec, never a default to fall into. Patterns match a file's path within its dataset, so a pattern anchored to a directory that only some datasets use is a scoping decision too.
+9. **Use the narrowest glob the requirement supports, and know that a catch-all is not always legal.** `**/*` matches every file at every depth and is a decision to state in the spec, never a default to fall into. At `dataset_file` granularity it is worse than broad: catch-all patterns are rejected at create time, so a file-granularity trigger cannot ask for every file. This is observed server behavior rather than something the SDK or the public docs state — the docs in fact recommend `**/*` with no caveat — so confirm it against the error you get, and treat "every file" as forcing either `for_each=Dataset` or a narrower pattern. Patterns match a file's path within its dataset, so a pattern anchored to a directory that only some datasets use is a scoping decision too.
 
 10. **A trigger without a condition is org-wide.** It will evaluate against every data source in the organization that produces its cause. When the description scopes the work at all — a project, a robot, a data campaign — that scope belongs in a condition, and the absence of one belongs in the spec as a deliberate choice.
 

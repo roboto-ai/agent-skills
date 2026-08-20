@@ -97,7 +97,7 @@ Also read the target action's parameters now, since Phase 1's Parameter axis nee
 roboto --suppress-upgrade-check actions show <action-name> --org <org-id>
 ```
 
-Organizations cap the number of active triggers. A create can therefore fail on a quota rather than on anything wrong with the trigger. Do not quote a number; if a create fails that way, point the user at their organization settings.
+Organizations cap the number of **active** triggers, and exceeding it does not fail the create — the SDK documents the trigger being created disabled instead. The failure surfaces later, when something tries to enable it. Do not quote a number; if a trigger comes back disabled when you asked for enabled, the org is at its cap, and the user's organization settings are where the limit lives.
 
 If a check fails, stop and tell the user exactly what to install or run. Do not begin the interview.
 
@@ -151,7 +151,7 @@ Two answers deserve a warning the first time they come up, stated once with the 
 
 Then record whatever the user decides.
 
-**With `--yolo`:** resolve every ambiguity yourself. Choose the option that keeps the trigger narrow and its misfires cheap: prefer the most specific glob the description supports over `**/*`, prefer a condition over none when the description names any scoping property, prefer `FileIngest` over `FileUpload` whenever the action reads topic data, and take the action's own compute defaults unless a requirement needs more. Mark each such choice as a default rather than a requirement when you record it.
+**With `--yolo`:** resolve every ambiguity yourself. Choose the option that keeps the trigger narrow and its misfires cheap: prefer the most specific glob the description supports over `**/*` (which is rejected outright at file granularity — rule 9), prefer a condition over none when the description names any scoping property, prefer `FileIngest` over `FileUpload` whenever the action reads topic data, and take the action's own compute defaults unless a requirement needs more. Mark each such choice as a default rather than a requirement when you record it.
 
 ### Step 4: Confirm the plan
 
@@ -173,10 +173,10 @@ The CLI and the SDK do not expose the same trigger. Confirm the current state of
 Whichever surface creates the trigger, **read the causes back** after creating it. The default set is a server-side decision this skill does not assert:
 
 ```python
-print(trigger.record.causes)
+print(trigger.record.causes, trigger.record.enabled)
 ```
 
-If the returned set is not the set Phase 1 settled on, that is a finding for the final report, not something to paper over.
+If the returned set is not the set Phase 1 settled on, that is a finding for the final report, not something to paper over. Read `enabled` in the same breath: a trigger created past the organization's active-trigger cap comes back disabled rather than failing, and a trigger that is disabled for that reason looks identical to one you disabled on purpose.
 
 ## Phase 3 — Author
 
@@ -217,15 +217,21 @@ Every evaluation carries a `status`, an `outcome`, and — when the outcome is `
    roboto --suppress-upgrade-check datasets upload-files -d <ds_id> -p ./sample.bag
    ```
 
-4. **Wait for evaluation to complete**, rather than sleeping a guessed interval:
+4. **Wait for the evaluation to exist, then to complete.** These are two different waits, and only the second has a helper:
 
    ```python
-   trigger.wait_for_evaluations_to_complete()
+   # First: poll until an evaluation newer than your event appears.
+   # wait_for_evaluations_to_complete() waits for *known* evaluations to leave Pending --
+   # with no evaluation records yet, every-element-of-an-empty-list is vacuously true and
+   # it returns immediately, leaving latest_evaluation() to read None or a stale record.
+   trigger.wait_for_evaluations_to_complete()   # only after a record exists
    ```
+
+   Skipping the first wait is the most likely way to fail this gate on a trigger that is working.
 
 5. **Read the evaluation.** `trigger.latest_evaluation()` returns the most recent record, and `Trigger.get_evaluations_for_dataset(dataset_id)` returns every evaluation any trigger performed for that dataset — the better call when you need to know whether your trigger was evaluated at all.
 
-   A verified positive path is: `status` is the completed status, `outcome` is the action-invoked outcome, and `cause` is the cause you configured. Anything else is a failure to diagnose, not a result to report.
+   A verified positive path is: `status` is `Evaluated` (the enum is `Pending`, `Evaluated`, `Failed` — there is no `Completed`), `outcome` is `InvokedAction`, and `cause` is the cause you configured. Anything else is a failure to diagnose, not a result to report.
 
 6. **Confirm the invocation exists and did the right thing.** `trigger.get_invocations()` yields the invocations this trigger produced. Take the newest, then:
 
