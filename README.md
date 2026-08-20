@@ -27,6 +27,7 @@ To install without the CLI, copy a skill's folder into your agent's skills direc
 | [debug-roboto-invocation](skills/debug-roboto-invocation/) | Diagnoses a Roboto Action invocation that failed, hung, or produced the wrong result, working from the invocation's own status history and exit code, and proves the fix by re-running it against the same input |
 | [create-roboto-ingestion-action](skills/create-roboto-ingestion-action/) | Builds an action that ingests a custom or unsupported log format into topics, and verifies it by reading the ingested data back as a dataframe rather than by watching the action exit cleanly |
 | [configure-roboto-upload-agent](skills/configure-roboto-upload-agent/) | Configures, verifies, and runs the Roboto upload agent on a robot, rig, or upload station, proving a full upload round trip before anything is set to delete the local copy |
+| [create-roboto-issue-sync-action](skills/create-roboto-issue-sync-action/) | Builds an action that files findings from Roboto as issues in GitLab, GitHub, Jira, or Linear and keeps them in sync across re-analysis, verified by re-running until a duplicate would appear |
 
 Each skill's README covers its requirements and usage.
 
