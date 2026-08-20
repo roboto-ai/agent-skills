@@ -43,7 +43,7 @@ Three rules govern every phase. They exist because the fastest-looking path thro
 
 1. **Read the status history before the logs.** Every invocation carries a log of its status transitions, and each transition can carry a detail message. Where an invocation stopped localizes the fault before you read a single line of output. An agent that opens with `invocations logs` and starts pattern-matching on tracebacks has skipped the cheapest evidence there is.
 
-2. **Never diagnose a non-terminal invocation.** Queued, Scheduled, Downloading, Processing, and Uploading are all live states, and a failed state is not necessarily final either — the platform may retry. Establish that the invocation has reached a terminal status before forming a verdict, and if it has not, say what it is currently doing instead of guessing at what it will do.
+2. **Never diagnose a non-terminal invocation.** Queued, Scheduled, Downloading, Processing, and Uploading are all live states. Test with `not status.is_terminal()`, never with `is_running()` — the latter covers only Downloading, Processing, and Uploading, so a Queued invocation returns `False` from both predicates. And note the sharp edge: `is_terminal()` returns `True` for `Failed`, while the transition rules still permit `Failed` to return to `Queued`. A `Failed` invocation therefore satisfies this rule and may still not be the last word. Prefer `Deadly` when both appear in the history, and say which you are reading.
 
 3. **A cause is not confirmed until it is reproduced or the evidence is unambiguous.** "The log mentions memory, so it ran out of memory" is a hypothesis. The status detail saying so, or a local run that fails the same way, is evidence. Say which one you have.
 
@@ -92,7 +92,7 @@ Also capture the invocation's configuration, since several causes are visible in
 roboto --suppress-upgrade-check invocations show <invocation_id>
 ```
 
-Read the action reference and its version, the data source and input specification, the parameter values, the compute requirements, and the timeout. A parameter that is absent, an input specification that selects nothing, or a timeout smaller than the work needs are all diagnosable here, before a log is opened.
+This prints the whole record as one JSON object, so it also carries the status log and the idempotency id. Read the action reference and its image digest (there is no version field, and an older invocation may carry no digest at all), the data source and input specification, the parameter values, the compute requirements, and the timeout. A parameter that is absent, an input specification that selects nothing, or a timeout smaller than the work needs are all diagnosable here, before a log is opened.
 
 ## Phase 1 — Read the evidence
 
@@ -104,13 +104,13 @@ roboto --suppress-upgrade-check invocations logs <invocation_id>
 
 Read them in this order, which is not the order they are printed in:
 
-1. **The end.** The last lines before the process stopped carry the proximate failure and the exit code where one was reported.
+1. **The end.** The last lines before the process stopped carry the proximate failure. The exit code is *not* a field here — there is no `exit_code` anywhere on the invocation surface; where one surfaces it is inside the terminal status's `detail` string from Phase 0, which is another reason that command comes first.
 2. **The beginning.** Startup lines establish whether the action reached its own code at all. A container that fails during import never logged anything the action wrote.
 3. **The middle**, only for what the requirements in question depend on: which inputs it found, which branch it took, what it reported writing.
 
-Two absences are themselves evidence:
+**The logs are not only the action's.** `invocations logs` returns records from every container in the invocation — setup, monitor, action, output handler, and the log router — under a per-process header, with no filtering. Read the headers before concluding anything from silence:
 
-- **No logs at all** means the action never ran. Combined with a pre-Processing terminal status, the fault is in the platform's preparation of the invocation, not in the action's code.
+- **No output under the action's own header** means the action's code never logged. Combined with a pre-Processing terminal status, the fault is in the platform's preparation of the invocation — and the setup container's section is where that is explained. This is the branch where the logs matter most, not least.
 - **Logs that stop mid-work with no error** point at a limit rather than a defect — a timeout, or the container being stopped. Check the elapsed time against the invocation's configured timeout, and check the last status detail.
 
 An action that logs nothing below error level may simply not have set its log level from the invocation context, in which case the absence of detail is a defect in the action's observability rather than evidence about this failure. `references/triage.md` covers that case.
@@ -121,7 +121,7 @@ Take the last status reached, the exit code if one was reported, and the details
 
 The spine of that tree is short enough to state here: **where it stopped tells you whose fault it is.** Failing while the platform is preparing inputs points at the invocation's input specification or at the data. Failing while the action's own code is running points at the action. Failing while outputs are being uploaded points at what the action wrote, or where it was to be written. And an invocation that never left the queue has not failed at all in the usual sense — it was never scheduled.
 
-Exit codes narrow it further. The action runtime uses a defined set adapted from `sysexits.h`, and they distinguish fault domains that look identical in a log: a usage error, an input-data error, an internal software error, and a configuration error are four different verdicts with four different fixes. Read the exact set and their meanings from the installed `roboto.action_runtime.exit_codes` enum.
+Exit codes narrow it further, where one was reported. The runtime *defines* a set adapted from `sysexits.h` — a usage error, an input-data error, an internal software error, a configuration error — four verdicts that look identical in a log and carry four different fixes. Read the exact set from the installed `roboto.action_runtime.exit_codes` enum, and note what that enum is: a vocabulary offered to action authors, not a set the platform emits on their behalf. An action that does not follow the convention exits with whatever its process exited with, so a code outside the enum is ordinary rather than anomalous.
 
 One of those deserves naming here because it is the most commonly misdiagnosed signal on the platform: **there is an exit code whose meaning is "the action behaved correctly and the input was bad."** Treating it as an action defect and changing the action's code is fixing the wrong thing — and it will look like it worked, because the action will then accept data it should have rejected. Confirm the code's meaning against the enum, and when it is that one, the finding is about the data.
 
@@ -137,7 +137,7 @@ When the action's source is available, reproduce locally with the narrowest inpu
 roboto --suppress-upgrade-check --log-level=info actions invoke-local --dry-run <args>
 ```
 
-Local invocation runs the container attached to a terminal, so from a non-interactive shell it exits after building the image unless you supply a pty. `create-roboto-action`'s Phase 4 documents the platform-specific `script` forms; use the one matching `uname -s`.
+Local invocation runs its container with an interactive terminal attached, so from a non-interactive shell the container never starts — **and the CLI still exits `0`**, so an unwrapped scripted run looks like it passed while reproducing nothing. Supply a pty. `create-roboto-action`'s Phase 4 documents the platform-specific `script` forms; use the one matching `uname -s`.
 
 Match the failing invocation's conditions, taking them from `invocations show`: the same parameter values, and the same input where you can select it. Then narrow: one file rather than the dataset, the smallest input that still reproduces. A reproduction that takes twenty minutes will be run once; one that takes twenty seconds will be run after every change.
 

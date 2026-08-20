@@ -17,10 +17,12 @@ Every diagnosis in this skill rests on one of these. Read them in this order.
 | Source | Command | What it settles |
 |---|---|---|
 | Status history | `roboto invocations status <id>` | Where it stopped, when, and what the platform said about each transition. **Read this first** |
-| Configuration | `roboto invocations show <id>` | What it was asked to do: action and version, data source and input specification, parameter values, compute requirements, timeout |
+| Configuration | `roboto invocations show <id>` | What it was asked to do. Prints the whole record as one JSON object: action name, owner, and image digest (there is no version field); data source and input specification; parameter values; compute requirements; timeout — plus the status log and idempotency id |
 | Logs | `roboto invocations logs <id>` | What the action itself reported while running |
 
-`status` and `logs` both accept a flag to follow a live invocation to completion. `logs` is only informative once the action has actually run; a stop before execution produces none.
+`status` and `logs` both accept a flag to follow a live invocation to completion.
+
+`logs` returns records from **every container in the invocation** — setup, monitor, action, output handler, and the log router — printed under a per-process header, with no filtering. So a stop before the action ran still produces logs: the setup container's, which is where that failure is explained. Absence of output under the *action's* header means the action's own code never logged; it does not mean there is nothing to read.
 
 ## Status vocabulary
 
@@ -38,7 +40,11 @@ The enum carries its own logic, and using it beats reimplementing it:
 
 ## Exit codes
 
-`roboto.action_runtime.exit_codes.ExitCode` defines the codes the action runtime reports, adapted from `sysexits.h`. The set distinguishes success, a usage error, an input-data error, an internal software error, and a configuration error. `references/triage.md` Step 3 maps each class to where its fix belongs.
+`roboto.action_runtime.exit_codes.ExitCode` is the vocabulary the action runtime **defines** for actions to exit with, adapted from `sysexits.h` — success, a usage error, an input-data error, an internal software error, a configuration error. It is a convention, not a set the platform emits: the SDK itself raises only the usage and internal-error codes, and only while preparing the environment. The data and configuration codes reach a status because an action's own code chose them, which is why an action ignoring the convention reports codes outside the enum. `triage.md` Step 3 maps each class to where its fix belongs.
+
+The exit code is **not a field on the invocation**. Nothing on `InvocationRecord` or `InvocationStatusRecord` carries it and no CLI command prints one; where an exit code surfaces, it is inside the terminal status's `detail` string.
+
+Codes above 128 are neither in the enum nor action-authored: by POSIX convention they are `128 + signal`, so `137` is a SIGKILL — most commonly the container exceeding its memory allocation, with no traceback anywhere to find.
 
 The input-data code is the one worth reading the docstring for: it exists so an action can say "I worked correctly and the input was wrong" as distinct from "I broke", and Roboto's own ingestion actions use it that way for a file that is the wrong format, corrupted, or empty.
 
@@ -78,7 +84,7 @@ Related verbs elsewhere:
 - `roboto actions invoke <action-ref> ...` — the hosted re-invocation of SKILL.md Phase 5. Its input selection and parameter flags are shared with local invocation; take the values from `invocations show` so the re-run matches the original
 - `roboto actions invoke-local ...` — local reproduction, which needs Docker and a pty from a non-interactive shell
 
-`cancel-all` operates in bulk. When triaging a cancelled invocation, establish whether it was cancelled individually or swept up by a bulk cancellation.
+`cancel-all` operates in bulk. A cancelled invocation's status detail names *who* cancelled it, not whether it was an individual stop or a bulk sweep; that can only be inferred, from many invocations in the org being cancelled by the same actor at the same moment. Report it as inferred.
 
 ## What this skill cannot see
 

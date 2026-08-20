@@ -51,7 +51,7 @@ On an agent without slash commands, point it at `debug-roboto-invocation/SKILL.m
 1. Finds the invocation, and establishes whether it has actually reached a verdict yet.
 2. Reads the invocation's **status history** before anything else — every transition, with the timestamp and the detail message the platform recorded for it.
 3. Reads the invocation's configuration, since a missing parameter, an input selection that resolved to nothing, or a timeout sized below the work are all diagnosable before a log is opened.
-4. Reads the logs last, end first, with the localization already in hand.
+4. Reads the logs last, end first, with the localization already in hand — and reads *all* of them: the logs cover every container in the invocation, so a failure before the action ever started is explained in the setup container's section rather than by their absence.
 5. Localizes the fault by where the invocation stopped and what exit code it reported, using the triage tree in `references/triage.md`.
 6. Reproduces the failure locally, with the narrowest input that still fails, when the action's source is available.
 7. Fixes the cause — in the action, in the invocation, in the data, or in an expectation — asking you when the cause is a decision rather than a defect.
