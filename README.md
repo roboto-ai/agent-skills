@@ -23,6 +23,7 @@ To install without the CLI, copy a skill's folder into your agent's skills direc
 | Skill | What it does |
 |---|---|
 | [create-roboto-action](skills/create-roboto-action/) | Generates a [Roboto Action](https://docs.roboto.ai/learn/actions.html) from a natural-language description of the job it should do, and dry-runs the action locally against a dataset in your Roboto org before handing it to you |
+| [roboto-guide](skills/roboto-guide/) | Answers questions about Roboto and writes `roboto` CLI commands and ad hoc Python SDK scripts, consulting [docs.roboto.ai](https://docs.roboto.ai) and the latest released SDK |
 
 Each skill's README covers its requirements and usage.
 
