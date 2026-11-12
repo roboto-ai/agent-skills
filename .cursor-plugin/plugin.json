@@ -1,0 +1,17 @@
+{
+  "name": "roboto",
+  "displayName": "Roboto",
+  "version": "1.0.0",
+  "description": "Search, analyze and triage robotics logs (ROS, MCAP, PX4, ArduPilot) in Roboto, plus skills for the Roboto CLI, SDK and Actions.",
+  "author": {
+    "name": "Roboto",
+    "url": "https://www.roboto.ai"
+  },
+  "homepage": "https://roboto.ai/docs",
+  "repository": "https://github.com/roboto-ai/agent-skills",
+  "license": "MPL-2.0",
+  "logo": "https://www.roboto.ai/assets/media-kit/roboto-icon-512.png",
+  "keywords": ["robotics", "ros", "mcap", "px4", "ardupilot", "log-analysis", "physical-ai", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json"
+}

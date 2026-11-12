@@ -1,0 +1,6 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "roboto",
+  "version": "1.0.0",
+  "description": "Search, analyze and triage robotics logs (ROS, MCAP, PX4, ArduPilot) in Roboto, plus skills for the Roboto CLI, SDK and Actions."
+}
