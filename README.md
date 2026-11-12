@@ -27,6 +27,19 @@ To install without the CLI, copy a skill's folder into your agent's skills direc
 
 Each skill's README covers its requirements and usage.
 
+## Plugins and MCP server
+
+This repo is also a plugin that bundles these skills with the hosted [Roboto MCP server](https://roboto.ai/docs) at `https://mcp.roboto.ai/mcp`, so agents can search and analyze your Roboto data directly. Manifests for each agent sit in the repo root:
+
+| File | Agent |
+|---|---|
+| `plugin.json` + `mcp.json` | [Agent Plugins](https://agent-plugins.org) standard (Cursor and others) |
+| `.cursor-plugin/plugin.json` | Cursor |
+| `.claude-plugin/plugin.json` + `.mcp.json` | Claude Code |
+| `gemini-extension.json` | Gemini CLI |
+
+The first time you connect, your agent opens a browser sign-in to Roboto; a sign-in lasts up to 30 days.
+
 ## License
 
 [MPL-2.0](LICENSE)
