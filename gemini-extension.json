@@ -1,0 +1,10 @@
+{
+  "name": "roboto",
+  "version": "1.0.0",
+  "description": "Search, analyze and triage robotics logs (ROS, MCAP, PX4, ArduPilot) in Roboto.",
+  "mcpServers": {
+    "roboto": {
+      "httpUrl": "https://mcp.roboto.ai/mcp"
+    }
+  }
+}
