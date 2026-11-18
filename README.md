@@ -22,6 +22,7 @@ To install without the CLI, copy a skill's folder into your agent's skills direc
 
 | Skill | What it does |
 |---|---|
+| [configure-roboto-upload-agent](skills/configure-roboto-upload-agent/) | Configures the Roboto upload agent (`roboto-agent`) on a robot or upload station so recordings upload without anyone running a command, and verifies a full upload round trip in Roboto before anything is set to delete the local copy |
 | [create-roboto-action](skills/create-roboto-action/) | Generates a [Roboto Action](https://docs.roboto.ai/learn/actions.html) from a natural-language description of the job it should do, and dry-runs the action locally against a dataset in your Roboto org before handing it to you |
 | [create-roboto-ingestion-action](skills/create-roboto-ingestion-action/) | Builds a [Roboto Action](https://www.roboto.ai/docs/learn/actions) that ingests a log format Roboto cannot read yet into topics you can search, plot, and read, and verifies it by reading the ingested data back and comparing it with a sample file |
 | [create-roboto-trigger](skills/create-roboto-trigger/) | Creates a [Roboto Trigger](https://www.roboto.ai/docs/learn/actions) that runs an existing action on a platform event or on a schedule, and verifies it with dry runs and a test dispatch on a trigger pinned to one test subject before handing you the command that puts it live |
